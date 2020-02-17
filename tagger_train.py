@@ -20,13 +20,18 @@ class POSTagger(nn.Module):
         self.lstm = nn.LSTM(hidden_size=hidden_dim, bidirectional=True)
         self.cnn = nn.Sequential(
             # TODO: define structure
+            # should have 1d convolution(s), max_pooling, dropout
         )
         self.word_embeddings = nn.Embedding(w_vocab_size, w_embedding_dim)
+        self.char_embeddings = nn.Embedding(c_vocab_size, c_embedding_dim)
         self.hidden2tag = nn.Linear(hidden_dim, target_size)
 
     def forward(self, sentence):
         w_embeddings = self.word_embeddings(sentence)
-        c_embeddings = self.cnn(sentence)
+        c_embeddings = self.char_embeddings(sentence)
+
+        # TODO: make some call to cnn
+        # self.cnn()
 
         full_embedding = torch.Tensor()  # TODO: concat word and character embeddings
 
