@@ -16,13 +16,19 @@ class POSTagger(nn.Module):
     def __init__(self, hidden_dim, target_size, w_embedding_dim,
                  w_vocab_size, c_embedding_dim, c_vocab_size, k=3, char_filters=10):
         super(POSTagger, self).__init__()
+        # Embeddings
         self.word_embeddings = nn.Embedding(w_vocab_size, w_embedding_dim)
         self.char_embeddings = nn.Embedding(c_vocab_size, c_embedding_dim)
+
+        # CNN
         self.dropout = nn.Dropout(0.2)
         self.char_conv = nn.Conv1d(in_channels=c_embedding_dim, out_channels=char_filters, kernel_size=k)
         # self.pool = F.max_pool1d()
 
+        # LSTM
         # self.lstm = nn.LSTM(hidden_size=hidden_dim, bidirectional=True)
+
+        # Linear mapping
         # self.hidden2tag = nn.Linear(hidden_dim, target_size)
 
     def forward(self, sentence):
@@ -32,7 +38,6 @@ class POSTagger(nn.Module):
         # print(c_embeddings.shape)
 
         # TODO: make some call to cnn
-        # self.cnn()
 
         full_embedding = torch.Tensor()  # TODO: concat word and character embeddings
 
@@ -60,8 +65,8 @@ def read_train_data(data_path: str) -> list:
 
 
 def get_word_tag_mappings(training_data: list) -> (dict, dict):
-    word_to_ix = {"<e>": 0}
-    tag_to_ix = {"<e>": 0}
+    word_to_ix = {"<e>": 0}  # padding word
+    tag_to_ix = {"<E>": 0}  # padding tag
     for sent, tags in training_data:
         for word in sent:
             if word not in word_to_ix:
@@ -75,7 +80,7 @@ def get_word_tag_mappings(training_data: list) -> (dict, dict):
 
 
 def get_char_vocabulary(training_data: list) -> dict:
-    vocab = set()
+    vocab = set("~")  # ~ - padding character
     for words, _ in training_data:
         vocab |= set("".join(words))
     return dict((k, v) for k, v in zip(sorted(list(vocab)), range(len(vocab))))
