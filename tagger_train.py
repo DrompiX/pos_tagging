@@ -129,7 +129,8 @@ def batch_generator(data, word_to_ix, char_to_ix, tag_to_ix, batch_size, pad="<P
 
 
 def train_epoch(pos_model, batches, criterion, optimizer):
-    for word_batch, char_batch, tags_batch in batches:
+    for i, (word_batch, char_batch, tags_batch) in enumerate(batches):
+        print(f'\r-> Batch [{i + 1}]', end='')
         tag_space = pos_model(word_batch, char_batch)
 
 
@@ -148,11 +149,13 @@ def train_model(train_file, model_file):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(pos_model.parameters(), lr=0.001)
 
-    batches = batch_generator(training_data, word_to_ix, char_to_ix, tag_to_ix, 5)
+    batches = list(batch_generator(training_data, word_to_ix, char_to_ix, tag_to_ix, 5))
 
     epochs = 5
     for epoch in range(epochs):
+        print(f"Epoch [{epoch + 1}/{epochs}]")
         train_epoch(pos_model, batches, criterion, optimizer)
+        print()
 
     print('Finished...')
 
