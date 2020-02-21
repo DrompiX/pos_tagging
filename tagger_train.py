@@ -65,8 +65,8 @@ def read_train_data(data_path: str) -> list:
 
 
 def get_word_tag_mappings(training_data: list) -> (dict, dict):
-    word_to_ix = {"<e>": 0}  # padding word
-    tag_to_ix = {"<E>": 0}  # padding tag
+    word_to_ix = {"<P>": 0}  # padding word
+    tag_to_ix = {"<P>": 0}  # padding tag
     for sent, tags in training_data:
         for word in sent:
             if word not in word_to_ix:
@@ -80,7 +80,8 @@ def get_word_tag_mappings(training_data: list) -> (dict, dict):
 
 
 def get_char_vocabulary(training_data: list) -> dict:
-    vocab = set("~")  # ~ - padding character
+    vocab = set()
+    vocab.add("<P>")  # ~ - padding character
     for words, _ in training_data:
         vocab |= set("".join(words))
     return dict((k, v) for k, v in zip(sorted(list(vocab)), range(len(vocab))))
@@ -91,7 +92,7 @@ def prepare_sequence(seq, word_to_ix):
     return torch.tensor(idxs, dtype=torch.long)
 
 
-def batch_generator(data, word_to_ix, batch_size):
+def batch_generator(data, word_to_ix, char_to_ix, batch_size, pad="<P>"):
     ord_data = sorted(data, key=lambda x: len(x[0]))
     for i in range(0, int(np.ceil(len(ord_data) / batch_size))):
         start_id = i * batch_size
@@ -99,15 +100,26 @@ def batch_generator(data, word_to_ix, batch_size):
         batch_slice = ord_data[start_id: end_id]
         max_len = len(batch_slice[-1][0])
 
-        batch = []
+        word_batch = []
+        char_batch = []
+        max_word_len = max([len(w) for sent, _ in batch_slice for w in sent])
         for sent, _ in batch_slice:
-            if len(sent) < max_len:
-                ext_sent = sent + ["<e>" for _ in range(max_len - len(sent))]
-            else:
-                ext_sent = sent
-            batch.append([word_to_ix[w] for w in ext_sent])
+            pad_sent = sent + [pad for _ in range(max_len - len(sent))]
+            word_batch.append([word_to_ix[w] for w in pad_sent])
 
-        yield torch.tensor(batch, dtype=torch.long)
+            sent_char_batch = []
+            for word in pad_sent:
+                word_chars = [pad] if word == pad else list(word)
+                padding = [pad for _ in range(max_word_len - len(word_chars))]
+                pad_word_chars = word_chars + padding
+                sent_char_batch.append([char_to_ix[c] for c in pad_word_chars])
+
+            char_batch.append(sent_char_batch)
+
+        word_batch_t = torch.tensor(word_batch, dtype=torch.long)
+        char_batch_t = torch.tensor(char_batch, dtype=torch.long)
+
+        yield word_batch_t, char_batch_t
 
 
 def train_model(train_file, model_file):
@@ -116,16 +128,16 @@ def train_model(train_file, model_file):
     EMBEDDING_DIM, HIDDEN_DIM = 7, 7
     training_data = read_train_data(train_file)
     word_to_ix, tag_to_ix = get_word_tag_mappings(training_data)
-    char_vocab = get_char_vocabulary(training_data)
+    char_to_ix = get_char_vocabulary(training_data)
 
     pos_model = POSTagger(HIDDEN_DIM, len(tag_to_ix.keys()), EMBEDDING_DIM, len(word_to_ix.keys()),
-                          7, len(char_vocab))
+                          7, len(char_to_ix))
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(pos_model.parameters(), lr=0.001)
 
-    for batch in batch_generator(training_data, word_to_ix, 5):
-        print('Shape:', batch.shape)
-        pos_model(batch)
+    for batch in batch_generator(training_data[:7], word_to_ix, char_to_ix, 5):
+        print('Shape:', batch[0].shape, batch[1].shape)
+        pos_model(batch[0])
 
     print('Finished...')
 
