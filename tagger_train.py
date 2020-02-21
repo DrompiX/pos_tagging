@@ -22,30 +22,31 @@ class POSTagger(nn.Module):
 
         # CNN
         self.dropout = nn.Dropout(0.2)
-        self.char_conv = nn.Conv1d(in_channels=c_embedding_dim, out_channels=char_filters, kernel_size=k)
-        # self.pool = F.max_pool1d()
+        self.char_conv = nn.Conv1d(in_channels=c_embedding_dim, out_channels=char_filters,
+                                   kernel_size=k, padding=1) # maybe use (k - 1) // 2 ?
 
         # LSTM
-        # self.lstm = nn.LSTM(hidden_size=hidden_dim, bidirectional=True)
+        self.lstm = nn.LSTM(w_embedding_dim + char_filters, hidden_dim, bidirectional=True)
 
         # Linear mapping
-        # self.hidden2tag = nn.Linear(hidden_dim, target_size)
+        self.hidden2tag = nn.Linear(2 * hidden_dim, target_size)
 
-    def forward(self, sentence):
-        w_embeddings = self.word_embeddings(sentence)
-        # c_embeddings = self.char_embeddings(sentence)
-        print(w_embeddings.shape)
-        # print(c_embeddings.shape)
+    def forward(self, word_batch, char_batch):
+        w_embeddings = self.word_embeddings(word_batch)
+        c_embeddings = self.char_embeddings(char_batch)
 
-        # TODO: make some call to cnn
+        cB, cW, cC, cE = c_embeddings.shape
+        c_embeddings = c_embeddings.transpose(3, 2).reshape((cB * cW, cE, cC))
+        cv = self.char_conv(self.dropout(c_embeddings))
+        pool = F.max_pool1d(cv, cv.shape[2]).squeeze(2)
+        char_repr = pool.reshape(cB, cW, -1)
 
-        full_embedding = torch.Tensor()  # TODO: concat word and character embeddings
+        full_embedding = torch.cat((w_embeddings, char_repr), dim=2)
 
-        # lstm_out, _ = self.lstm(full_embedding)
-        # tag_space = self.hidden2tag(lstm_out)
-        # TODO: Do we need this? Cross-entropy uses softmax under the hood (IINM)
-        # tag_scores = F.log_softmax(tag space)
-        # return tag_space
+        lstm_out, _ = self.lstm(full_embedding)
+
+        tag_space = self.hidden2tag(lstm_out)
+        return tag_space
 
 
 def read_train_data(data_path: str) -> list:
@@ -92,7 +93,7 @@ def prepare_sequence(seq, word_to_ix):
     return torch.tensor(idxs, dtype=torch.long)
 
 
-def batch_generator(data, word_to_ix, char_to_ix, batch_size, pad="<P>"):
+def batch_generator(data, word_to_ix, char_to_ix, tag_to_ix, batch_size, pad="<P>"):
     ord_data = sorted(data, key=lambda x: len(x[0]))
     for i in range(0, int(np.ceil(len(ord_data) / batch_size))):
         start_id = i * batch_size
@@ -102,10 +103,14 @@ def batch_generator(data, word_to_ix, char_to_ix, batch_size, pad="<P>"):
 
         word_batch = []
         char_batch = []
+        tags_batch = []
         max_word_len = max([len(w) for sent, _ in batch_slice for w in sent])
-        for sent, _ in batch_slice:
-            pad_sent = sent + [pad for _ in range(max_len - len(sent))]
+        for sent, tags in batch_slice:
+            padding = [pad for _ in range(max_len - len(sent))]
+            pad_sent = sent + padding
+            pad_tags = tags + padding
             word_batch.append([word_to_ix[w] for w in pad_sent])
+            tags_batch.append([tag_to_ix[w] for w in pad_tags])
 
             sent_char_batch = []
             for word in pad_sent:
@@ -118,8 +123,14 @@ def batch_generator(data, word_to_ix, char_to_ix, batch_size, pad="<P>"):
 
         word_batch_t = torch.tensor(word_batch, dtype=torch.long)
         char_batch_t = torch.tensor(char_batch, dtype=torch.long)
+        tags_batch_t = torch.tensor(tags_batch, dtype=torch.long)
 
-        yield word_batch_t, char_batch_t
+        yield word_batch_t, char_batch_t, tags_batch_t
+
+
+def train_epoch(pos_model, batches, criterion, optimizer):
+    for word_batch, char_batch, tags_batch in batches:
+        tag_space = pos_model(word_batch, char_batch)
 
 
 def train_model(train_file, model_file):
@@ -128,6 +139,8 @@ def train_model(train_file, model_file):
     EMBEDDING_DIM, HIDDEN_DIM = 7, 7
     training_data = read_train_data(train_file)
     word_to_ix, tag_to_ix = get_word_tag_mappings(training_data)
+    ix_to_word = dict((v, k) for (k, v) in word_to_ix.items())
+    ix_to_tag = dict((v, k) for (k, v) in tag_to_ix.items())
     char_to_ix = get_char_vocabulary(training_data)
 
     pos_model = POSTagger(HIDDEN_DIM, len(tag_to_ix.keys()), EMBEDDING_DIM, len(word_to_ix.keys()),
@@ -135,9 +148,11 @@ def train_model(train_file, model_file):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(pos_model.parameters(), lr=0.001)
 
-    for batch in batch_generator(training_data[:7], word_to_ix, char_to_ix, 5):
-        print('Shape:', batch[0].shape, batch[1].shape)
-        pos_model(batch[0])
+    batches = batch_generator(training_data, word_to_ix, char_to_ix, tag_to_ix, 5)
+
+    epochs = 5
+    for epoch in range(epochs):
+        train_epoch(pos_model, batches, criterion, optimizer)
 
     print('Finished...')
 
