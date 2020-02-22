@@ -19,14 +19,6 @@ def read_test_data(data_path: str) -> list:
     return testing_data
 
 
-# def prepare_model_input(data, word_to_ix, char_to_ix):
-#     idxs = [word_to_ix[w] for w in data]
-#     words = torch.tensor(idxs, dtype=torch.long).unsqueeze(0)
-#     char_idxs = [[char_to_ix[c] for c in w] for w in data]
-#     chars = torch.tensor(char_idxs, dtype=torch.long)
-#     return words, chars
-
-
 def prepare_model_input(sent, word_to_ix, char_to_ix, pad='<P>'):
     words = [word_to_ix[w] if w in word_to_ix else word_to_ix['<UNK>'] for w in sent]
     chars = []
@@ -49,7 +41,7 @@ def tag_sentence(test_file, model_file, out_file):
     word_to_ix, tag_to_ix, char_to_ix, model_state_dict = torch.load(model_file)
     ix_to_word = dict((v, k) for (k, v) in word_to_ix.items())
     ix_to_tag = dict((v, k) for (k, v) in tag_to_ix.items())
-    pos_model = POSTagger(7, 46, 7, 38474, 7, 59)
+    pos_model = POSTagger(10, 46, 10, 38474, 10, 59)
     pos_model.load_state_dict(model_state_dict)
 
     # testing_t = list(prepare_model_input(testing_data, word_to_ix, char_to_ix))

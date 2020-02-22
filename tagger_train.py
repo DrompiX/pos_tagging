@@ -144,7 +144,7 @@ def train_epoch(pos_model, batches, criterion, optimizer):
     total_loss, batch_cnt = 0, 0
     for i, (word_batch, char_batch, tags_batch) in enumerate(batches):
         print(f'\r-> Batch [{i + 1}]', end='')
-        unk_word_batch = apply_unknowns(word_batch)
+        unk_word_batch = apply_unknowns(word_batch, 0.1)
         pred_tags = pos_model(unk_word_batch, char_batch).transpose(2, 1)
         loss = criterion(pred_tags, tags_batch)
 
@@ -161,7 +161,7 @@ def train_epoch(pos_model, batches, criterion, optimizer):
 def train_model(train_file, model_file):
     # Write your code here. You can add functions as well. Use torch 
     # library to save model parameters, hyperparameters, etc. to model_file
-    EMBEDDING_DIM, HIDDEN_DIM = 7, 7
+    EMBEDDING_DIM, HIDDEN_DIM = 10, 10
     training_data = read_train_data(train_file)
     word_to_ix, tag_to_ix = get_word_tag_mappings(training_data)
     # ix_to_word = dict((v, k) for (k, v) in word_to_ix.items())
@@ -169,7 +169,7 @@ def train_model(train_file, model_file):
     char_to_ix = get_char_vocabulary(training_data)
 
     pos_model = POSTagger(HIDDEN_DIM, len(tag_to_ix.keys()), EMBEDDING_DIM, len(word_to_ix.keys()),
-                          7, len(char_to_ix))
+                          EMBEDDING_DIM, len(char_to_ix))
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(pos_model.parameters(), lr=0.001)
