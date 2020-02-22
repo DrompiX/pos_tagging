@@ -66,7 +66,7 @@ def read_train_data(data_path: str) -> list:
 
 
 def get_word_tag_mappings(training_data: list) -> (dict, dict):
-    word_to_ix = {"<P>": 0}  # padding word
+    word_to_ix = {"<P>": 0, "<UNK>": 1}  # padding word, unknown word
     tag_to_ix = {"<P>": 0}  # padding tag
     for sent, tags in training_data:
         for word in sent:
@@ -128,10 +128,34 @@ def batch_generator(data, word_to_ix, char_to_ix, tag_to_ix, batch_size, pad="<P
         yield word_batch_t, char_batch_t, tags_batch_t
 
 
+def apply_unknowns(batch, unknown_size=0.2):
+    words_to_change = int(unknown_size * batch.shape[1])
+    ids = range(batch.shape[1])
+
+    if words_to_change > 0:
+        for i in range(batch.shape[0]):
+            replace_ids = np.random.choice(ids, size=words_to_change, replace=False)
+            batch[i][replace_ids] = 1  # set to unknown word
+
+    return batch
+
+
 def train_epoch(pos_model, batches, criterion, optimizer):
+    total_loss, batch_cnt = 0, 0
     for i, (word_batch, char_batch, tags_batch) in enumerate(batches):
         print(f'\r-> Batch [{i + 1}]', end='')
-        tag_space = pos_model(word_batch, char_batch)
+        unk_word_batch = apply_unknowns(word_batch)
+        pred_tags = pos_model(unk_word_batch, char_batch).transpose(2, 1)
+        loss = criterion(pred_tags, tags_batch)
+
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+        total_loss += loss
+        batch_cnt += 1
+
+    return total_loss / batch_cnt
 
 
 def train_model(train_file, model_file):
@@ -140,12 +164,13 @@ def train_model(train_file, model_file):
     EMBEDDING_DIM, HIDDEN_DIM = 7, 7
     training_data = read_train_data(train_file)
     word_to_ix, tag_to_ix = get_word_tag_mappings(training_data)
-    ix_to_word = dict((v, k) for (k, v) in word_to_ix.items())
-    ix_to_tag = dict((v, k) for (k, v) in tag_to_ix.items())
+    # ix_to_word = dict((v, k) for (k, v) in word_to_ix.items())
+    # ix_to_tag = dict((v, k) for (k, v) in tag_to_ix.items())
     char_to_ix = get_char_vocabulary(training_data)
 
     pos_model = POSTagger(HIDDEN_DIM, len(tag_to_ix.keys()), EMBEDDING_DIM, len(word_to_ix.keys()),
                           7, len(char_to_ix))
+
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(pos_model.parameters(), lr=0.001)
 
@@ -153,9 +178,11 @@ def train_model(train_file, model_file):
 
     epochs = 5
     for epoch in range(epochs):
-        print(f"Epoch [{epoch + 1}/{epochs}]")
-        train_epoch(pos_model, batches, criterion, optimizer)
-        print()
+        print(f'Epoch [{epoch + 1}/{epochs}]')
+        epoch_loss = train_epoch(pos_model, batches, criterion, optimizer)
+        print(f' >>> Epoch Loss {epoch_loss.item()}')
+
+    torch.save((word_to_ix, tag_to_ix, char_to_ix, pos_model.state_dict()), model_file)
 
     print('Finished...')
 
