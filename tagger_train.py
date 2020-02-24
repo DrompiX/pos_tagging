@@ -23,7 +23,7 @@ class POSTagger(nn.Module):
         # CNN
         self.dropout = nn.Dropout(0.2)
         self.char_conv = nn.Conv1d(in_channels=c_embedding_dim, out_channels=char_filters,
-                                   kernel_size=k, padding=1) # maybe use (k - 1) // 2 ?
+                                   kernel_size=k, padding=(k - 1) // 2)
 
         # LSTM
         self.lstm = nn.LSTM(w_embedding_dim + char_filters, hidden_dim, bidirectional=True)
@@ -56,7 +56,6 @@ def read_train_data(data_path: str) -> list:
         for sentence in data:
             words2tokens = []
             for tagged_word in sentence.split():
-                # TODO: Create tuples for each element in sequence of / ???
                 word, tag = tuple(tagged_word.rsplit('/', 1))
                 words2tokens.append((word.lower(), tag))
             
@@ -135,7 +134,7 @@ def apply_unknowns(batch, unknown_size=0.2):
     if words_to_change > 0:
         for i in range(batch.shape[0]):
             replace_ids = np.random.choice(ids, size=words_to_change, replace=False)
-            batch[i][replace_ids] = 1  # set to unknown word
+            batch[i][replace_ids] = 1  # set to unknown word id
 
     return batch
 
@@ -159,22 +158,27 @@ def train_epoch(pos_model, batches, criterion, optimizer):
 
 
 def train_model(train_file, model_file):
-    # Write your code here. You can add functions as well. Use torch 
-    # library to save model parameters, hyperparameters, etc. to model_file
-    EMBEDDING_DIM, HIDDEN_DIM = 10, 10
     training_data = read_train_data(train_file)
     word_to_ix, tag_to_ix = get_word_tag_mappings(training_data)
-    # ix_to_word = dict((v, k) for (k, v) in word_to_ix.items())
-    # ix_to_tag = dict((v, k) for (k, v) in tag_to_ix.items())
     char_to_ix = get_char_vocabulary(training_data)
 
-    pos_model = POSTagger(HIDDEN_DIM, len(tag_to_ix.keys()), EMBEDDING_DIM, len(word_to_ix.keys()),
-                          EMBEDDING_DIM, len(char_to_ix))
+    model_params = {
+        "hidden_dim": 10,
+        "target_size": len(tag_to_ix),
+        "w_embedding_dim": 10,
+        "w_vocab_size": len(word_to_ix),
+        "c_embedding_dim": 10,
+        "c_vocab_size": len(char_to_ix),
+        "k": 3,
+        "char_filters": 20
+    }
+
+    pos_model = POSTagger(**model_params)
 
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(pos_model.parameters(), lr=0.001)
+    optimizer = optim.Adam(pos_model.parameters(), lr=0.005)
 
-    batches = list(batch_generator(training_data, word_to_ix, char_to_ix, tag_to_ix, 5))
+    batches = list(batch_generator(training_data, word_to_ix, char_to_ix, tag_to_ix, 4))
 
     epochs = 5
     for epoch in range(epochs):
@@ -182,7 +186,8 @@ def train_model(train_file, model_file):
         epoch_loss = train_epoch(pos_model, batches, criterion, optimizer)
         print(f' >>> Epoch Loss {epoch_loss.item()}')
 
-    torch.save((word_to_ix, tag_to_ix, char_to_ix, pos_model.state_dict()), model_file)
+    torch.save((word_to_ix, tag_to_ix, char_to_ix, model_params,
+                pos_model.state_dict()), model_file)
 
     print('Finished...')
 
