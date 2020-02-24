@@ -40,7 +40,7 @@ def tag_sentence(test_file, model_file, out_file):
     testing_data = read_test_data(test_file)
     word_to_ix, tag_to_ix, char_to_ix, params, model_state_dict = torch.load(model_file)
     ix_to_tag = dict((v, k) for (k, v) in tag_to_ix.items())
-    pos_model = POSTagger(**params)  # 10, 46, 10, 38474, 10, 59, k=5, char_filters=10)
+    pos_model = POSTagger(**params)
     pos_model.load_state_dict(model_state_dict)
 
     with open(out_file, 'w') as fd:

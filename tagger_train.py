@@ -1,8 +1,7 @@
 # python3.7 tagger_train.py <train_file_absolute_path> <model_file_absolute_path>
 
-import pickle
 import sys
-from random import uniform
+import time
 
 import numpy as np
 import torch
@@ -81,15 +80,10 @@ def get_word_tag_mappings(training_data: list) -> (dict, dict):
 
 def get_char_vocabulary(training_data: list) -> dict:
     vocab = set()
-    vocab.add("<P>")  # ~ - padding character
+    vocab.add("<P>")  # padding character
     for words, _ in training_data:
         vocab |= set("".join(words))
     return dict((k, v) for k, v in zip(sorted(list(vocab)), range(len(vocab))))
-
-
-def prepare_sequence(seq, word_to_ix):
-    idxs = [word_to_ix[w] for w in seq]
-    return torch.tensor(idxs, dtype=torch.long)
 
 
 def batch_generator(data, word_to_ix, char_to_ix, tag_to_ix, batch_size, pad="<P>"):
@@ -163,7 +157,7 @@ def train_model(train_file, model_file):
     char_to_ix = get_char_vocabulary(training_data)
 
     model_params = {
-        "hidden_dim": 10,
+        "hidden_dim": 20,
         "target_size": len(tag_to_ix),
         "w_embedding_dim": 10,
         "w_vocab_size": len(word_to_ix),
@@ -180,7 +174,7 @@ def train_model(train_file, model_file):
 
     batches = list(batch_generator(training_data, word_to_ix, char_to_ix, tag_to_ix, 4))
 
-    epochs = 5
+    epochs = 7
     for epoch in range(epochs):
         print(f'Epoch [{epoch + 1}/{epochs}]')
         epoch_loss = train_epoch(pos_model, batches, criterion, optimizer)
@@ -196,4 +190,6 @@ if __name__ == "__main__":
     # make no changes here
     train_file = sys.argv[1]
     model_file = sys.argv[2]
+    start_time = time.time()
     train_model(train_file, model_file)
+    print("Program finished in %s seconds." % (time.time() - start_time))
